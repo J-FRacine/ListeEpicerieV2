@@ -177,7 +177,7 @@ def user_panel():
         def on_user_change(e):
             global current_user_id
             current_user_id = user_names[e.value]
-            refresh_all()
+            ui.open('/')
 
         ui.select(
             names_list,
@@ -186,22 +186,20 @@ def user_panel():
             on_change=on_user_change
         )
 
-        # Renommer
         new_name_input = ui.input('Nouveau nom').classes('w-full')
         def do_rename():
             name = new_name_input.value.strip()
             if name:
                 rename_user(current_user_id, name)
-                refresh_all()
+                ui.open('/')
         ui.button('Renommer', on_click=do_rename).classes('mt-2')
 
-        # Ajouter
         new_user_input = ui.input('Nouvel utilisateur').classes('w-full')
         def do_add_user():
             name = new_user_input.value.strip()
             if name:
                 add_user(name)
-                refresh_all()
+                ui.open('/')
         ui.button('Créer utilisateur', on_click=do_add_user).classes('mt-2')
 
 # ---------- UI ONGLET BAS ----------
@@ -212,13 +210,18 @@ def bottom_nav():
         def set_tab(tab):
             global current_tab
             current_tab = tab
-            refresh_main()
+            ui.open('/')
 
         ui.button('📝 Items', on_click=lambda: set_tab('items')).props('flat color=white')
         ui.button('❤️ Besoins', on_click=lambda: set_tab('besoins')).props('flat color=white')
         ui.button('📂 Catégories', on_click=lambda: set_tab('categories')).props('flat color=white')
 
 # ---------- UI ITEMS ----------
+def change_cat(item_id, new_cat_name, cat_dict):
+    if new_cat_name in cat_dict:
+        update_item_category(item_id, cat_dict[new_cat_name])
+        ui.open('/')
+
 def items_tab():
     global tri_mode_items
 
@@ -241,26 +244,24 @@ def items_tab():
             needed = 1 if item_needed_checkbox.value else 0
             if name and cat_name:
                 add_item(name, cat_dict[cat_name], needed, current_user_id)
-                item_name_input.value = ''
-                item_needed_checkbox.value = False
-                refresh_main()
+                ui.open('/')
 
         ui.button('Ajouter item', on_click=add_item_action).classes('mt-2 w-full')
 
     ui.separator()
     ui.label('Tous les items').classes('text-lg font-bold')
 
-    tri_select = ui.select(
+    def set_tri_items(mode):
+        global tri_mode_items
+        tri_mode_items = mode
+        ui.open('/')
+
+    ui.select(
         ['Alphabétique', 'Ordre d’ajout', 'Catégorie', 'Besoin'],
         value=tri_mode_items,
         label='Trier les items par',
         on_change=lambda e: set_tri_items(e.value)
     ).classes('w-full max-w-md')
-
-    def set_tri_items(mode):
-        global tri_mode_items
-        tri_mode_items = mode
-        refresh_main()
 
     all_items = get_items(current_user_id, only_needed=False)
 
@@ -275,9 +276,9 @@ def items_tab():
         with ui.row().classes('items-center w-full max-w-md justify-between bg-[#1e1e1e] rounded-lg px-3 py-2 mt-2'):
             ui.label(name).classes('text-base font-bold')
 
-            def toggle():
-                toggle_needed(iid)
-                refresh_main()
+            def toggle(item_id=iid):
+                toggle_needed(item_id)
+                ui.open('/')
 
             ui.button('✔️' if needed else '❌', on_click=toggle).props('flat color=white')
 
@@ -287,17 +288,17 @@ def items_tab():
                 on_change=lambda e, item_id=iid: change_cat(item_id, e.value, cat_dict)
             ).classes('w-32')
 
-            def delete():
-                delete_item(iid)
-                refresh_main()
+            def delete(item_id=iid):
+                delete_item(item_id)
+                ui.open('/')
 
             ui.button('🗑️', on_click=delete).props('flat color=red')
 
-def change_cat(item_id, new_cat_name, cat_dict):
-    if new_cat_name in cat_dict:
-        update_item_category(item_id, cat_dict[new_cat_name])
-
 # ---------- UI CATEGORIES ----------
+def delete_cat_action(cat_id):
+    delete_category(cat_id)
+    ui.open('/')
+
 def categories_tab():
     ui.label('Gestion des catégories').classes('text-xl font-bold')
 
@@ -307,8 +308,7 @@ def categories_tab():
         name = new_cat_input.value.strip()
         if name:
             add_category(name)
-            new_cat_input.value = ''
-            refresh_main()
+            ui.open('/')
 
     ui.button('Ajouter', on_click=add_cat_action).classes('mt-2 w-full max-w-md')
 
@@ -321,27 +321,23 @@ def categories_tab():
             ui.label(name)
             ui.button('🗑️', on_click=lambda cat_id=cid: delete_cat_action(cat_id)).props('flat color=red')
 
-def delete_cat_action(cat_id):
-    delete_category(cat_id)
-    refresh_main()
-
 # ---------- UI BESOINS ----------
 def besoins_tab():
     global tri_mode_needs
 
     ui.label('Besoins par catégorie').classes('text-xl font-bold')
 
-    tri_select = ui.select(
+    def set_tri_needs(mode):
+        global tri_mode_needs
+        tri_mode_needs = mode
+        ui.open('/')
+
+    ui.select(
         ['Alphabétique', 'Ordre d’ajout'],
         value=tri_mode_needs,
         label='Mode de tri',
         on_change=lambda e: set_tri_needs(e.value)
     ).classes('w-full max-w-md')
-
-    def set_tri_needs(mode):
-        global tri_mode_needs
-        tri_mode_needs = mode
-        refresh_main()
 
     needed_items = get_items(current_user_id, only_needed=True)
 
@@ -362,14 +358,14 @@ def besoins_tab():
                 with ui.row().classes('items-center w-full max-w-md justify-start gap-3 mt-1'):
                     def toggle_need(item_id=iid):
                         toggle_needed(item_id)
-                        refresh_main()
+                        ui.open('/')
 
                     ui.button('❌', on_click=toggle_need).props('flat color=red')
                     ui.label(name).classes('text-base font-bold')
 
-# ---------- REFRESH ----------
-def refresh_main():
-    ui.page().clear()
+# ---------- PAGE PRINCIPALE ----------
+@ui.page('/')
+def main_page():
     with ui.row().classes('w-full justify-center mt-2'):
         user_panel()
     ui.separator()
@@ -381,9 +377,5 @@ def refresh_main():
         categories_tab()
     bottom_nav()
 
-def refresh_all():
-    refresh_main()
-
 # ---------- LANCEMENT ----------
-refresh_main()
 ui.run(title='Liste d’achats', reload=False)
