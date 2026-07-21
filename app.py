@@ -369,7 +369,7 @@ def besoins_tab():
 
 # ---------- REFRESH ----------
 def refresh_main():
-    ui.clear()
+    ui.page().clear()
     with ui.row().classes('w-full justify-center mt-2'):
         user_panel()
     ui.separator()
