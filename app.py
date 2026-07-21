@@ -276,7 +276,7 @@ def items_panel():
         all_items = sorted(all_items, key=lambda x: x[3], reverse=True)
 
     for iid, name, cat, needed in all_items:
-        with ui.row().classes('items-center justify-between bg-[#1e1e1e] rounded-lg px-3 py-2 mt-2'):
+        with ui.row().classes('items-center justify-between bg-gray-100 rounded-lg px-3 py-2 mt-2'):
             ui.label(name).classes('font-bold')
 
             ui.button('✔️' if needed else '❌',
@@ -338,7 +338,7 @@ def needs_panel():
 def bottom_nav():
     global current_tab
 
-    with ui.row().classes('fixed bottom-0 left-0 w-full justify-around bg-black text-white py-2 border-t border-gray-700'):
+    with ui.row().classes('fixed bottom-0 left-0 w-full justify-around bg-gray-800 text-white py-2 border-t border-gray-700'):
         def set_tab(tab):
             global current_tab
             current_tab = tab
@@ -353,12 +353,14 @@ def bottom_nav():
 def main_page():
 
     with ui.row().classes('w-full justify-center mt-4'):
-        with ui.column().classes('w-full max-w-sm bg-[#222] p-4 rounded-lg'):
+        # Colonne gauche
+        with ui.column().classes('w-full max-w-sm bg-white text-black p-4 rounded-lg shadow-md'):
             user_panel()
             ui.separator()
             categories_panel()
 
-        with ui.column().classes('w-full max-w-sm bg-[#222] p-4 rounded-lg ml-4'):
+        # Colonne droite
+        with ui.column().classes('w-full max-w-sm bg-white text-black p-4 rounded-lg shadow-md ml-4'):
             add_item_panel()
             ui.separator()
             if current_tab == 'items':
