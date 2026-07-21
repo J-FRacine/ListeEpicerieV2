@@ -51,8 +51,8 @@ init_db()
 # ---------- ÉTAT GLOBAL ----------
 current_user_id = 1
 current_tab = 'items'
-tri_mode_items = 'Ordre d’ajout'
-tri_mode_needs = 'Ordre d’ajout'
+tri_mode_items = 'Alphabétique'
+tri_mode_needs = 'Alphabétique'
 
 # Nouveaux états pour expansions
 exp_user_open = False
