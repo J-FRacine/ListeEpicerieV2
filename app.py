@@ -37,7 +37,6 @@ def init_db():
         )
     ''')
 
-    # colonne user_id si manquante
     cur.execute("PRAGMA table_info(items)")
     cols = [c[1] for c in cur.fetchall()]
     if 'user_id' not in cols:
@@ -47,6 +46,15 @@ def init_db():
     conn.commit()
     conn.close()
 
+init_db()
+
+# ---------- ÉTAT GLOBAL ----------
+current_user_id = 1
+current_tab = 'items'
+tri_mode_items = 'Ordre d’ajout'
+tri_mode_needs = 'Ordre d’ajout'
+
+# ---------- DB HELPERS ----------
 def get_users():
     conn = get_conn()
     cur = conn.cursor()
@@ -150,59 +158,183 @@ def update_item_category(item_id, category_id):
     conn.commit()
     conn.close()
 
-# ---------- INIT DB ----------
-init_db()
-
-# ---------- ÉTAT GLOBAL ----------
-current_user_id = 1
-current_tab = 'items'
-tri_mode_items = 'Ordre d’ajout'
-tri_mode_needs = 'Ordre d’ajout'
-
-# ---------- UI UTILISATEURS ----------
+# ---------- PANNEAU UTILISATEUR ----------
 def user_panel():
     global current_user_id
 
-    with ui.column().classes('w-full max-w-md'):
-        ui.label('Utilisateur').classes('text-lg font-bold')
+    ui.label('Utilisateur').classes('text-lg font-bold')
 
+    users = get_users()
+    if not users:
+        add_user('Utilisateur 1')
         users = get_users()
-        if not users:
-            add_user('Utilisateur 1')
-            users = get_users()
 
-        user_names = {u[1]: u[0] for u in users}
-        names_list = list(user_names.keys())
+    user_names = {u[1]: u[0] for u in users}
+    names_list = list(user_names.keys())
 
-        def on_user_change(e):
-            global current_user_id
-            current_user_id = user_names[e.value]
+    def on_user_change(e):
+        global current_user_id
+        current_user_id = user_names[e.value]
+        ui.open('/')
+
+    ui.select(
+        names_list,
+        value=names_list[0],
+        label='Choisir un utilisateur',
+        on_change=on_user_change
+    )
+
+    new_name_input = ui.input('Nouveau nom')
+    def do_rename():
+        name = new_name_input.value.strip()
+        if name:
+            rename_user(current_user_id, name)
+            ui.open('/')
+    ui.button('Renommer', on_click=do_rename).classes('mt-2')
+
+    new_user_input = ui.input('Nouvel utilisateur')
+    def do_add_user():
+        name = new_user_input.value.strip()
+        if name:
+            add_user(name)
+            ui.open('/')
+    ui.button('Créer utilisateur', on_click=do_add_user).classes('mt-2')
+
+# ---------- PANNEAU CATÉGORIES ----------
+def categories_panel():
+    ui.label('Catégories').classes('text-lg font-bold')
+
+    new_cat_input = ui.input('Nouvelle catégorie')
+
+    def add_cat_action():
+        name = new_cat_input.value.strip()
+        if name:
+            add_category(name)
             ui.open('/')
 
-        ui.select(
-            names_list,
-            value=names_list[0],
-            label='Choisir un utilisateur',
-            on_change=on_user_change
-        )
+    ui.button('Ajouter', on_click=add_cat_action).classes('mt-2')
 
-        new_name_input = ui.input('Nouveau nom').classes('w-full')
-        def do_rename():
-            name = new_name_input.value.strip()
-            if name:
-                rename_user(current_user_id, name)
-                ui.open('/')
-        ui.button('Renommer', on_click=do_rename).classes('mt-2')
+    ui.separator()
 
-        new_user_input = ui.input('Nouvel utilisateur').classes('w-full')
-        def do_add_user():
-            name = new_user_input.value.strip()
-            if name:
-                add_user(name)
-                ui.open('/')
-        ui.button('Créer utilisateur', on_click=do_add_user).classes('mt-2')
+    categories = get_categories()
+    for cid, name in categories:
+        with ui.row().classes('items-center justify-between mt-1'):
+            ui.label(name)
+            ui.button('🗑️', on_click=lambda cat_id=cid: (delete_category(cat_id), ui.open('/'))).props('flat color=red')
 
-# ---------- UI ONGLET BAS ----------
+# ---------- PANNEAU AJOUT ITEM ----------
+def add_item_panel():
+    ui.label('Ajouter un item').classes('text-lg font-bold')
+
+    categories = get_categories()
+    cat_dict = {name: cid for cid, name in categories}
+    cat_names = list(cat_dict.keys())
+
+    item_name_input = ui.input('Nom de l’item')
+    item_cat_select = ui.select(cat_names, label='Catégorie')
+    item_needed_checkbox = ui.checkbox('J’en ai besoin')
+
+    def add_item_action():
+        name = item_name_input.value.strip()
+        cat_name = item_cat_select.value
+        needed = 1 if item_needed_checkbox.value else 0
+        if name and cat_name:
+            add_item(name, cat_dict[cat_name], needed, current_user_id)
+            ui.open('/')
+
+    ui.button('Ajouter item', on_click=add_item_action).classes('mt-2')
+
+# ---------- LISTE DES ITEMS ----------
+def items_panel():
+    global tri_mode_items
+
+    ui.label('Tous les items').classes('text-lg font-bold')
+
+    def set_tri_items(mode):
+        global tri_mode_items
+        tri_mode_items = mode
+        ui.open('/')
+
+    ui.select(
+        ['Alphabétique', 'Ordre d’ajout', 'Catégorie', 'Besoin'],
+        value=tri_mode_items,
+        label='Trier par',
+        on_change=lambda e: set_tri_items(e.value)
+    )
+
+    categories = get_categories()
+    cat_dict = {name: cid for cid, name in categories}
+    cat_names = list(cat_dict.keys())
+
+    all_items = get_items(current_user_id)
+
+    if tri_mode_items == 'Alphabétique':
+        all_items = sorted(all_items, key=lambda x: x[1].lower())
+    elif tri_mode_items == 'Catégorie':
+        all_items = sorted(all_items, key=lambda x: (x[2] or '').lower())
+    elif tri_mode_items == 'Besoin':
+        all_items = sorted(all_items, key=lambda x: x[3], reverse=True)
+
+    for iid, name, cat, needed in all_items:
+        with ui.row().classes('items-center justify-between bg-[#1e1e1e] rounded-lg px-3 py-2 mt-2'):
+            ui.label(name).classes('font-bold')
+
+            ui.button('✔️' if needed else '❌',
+                      on_click=lambda item_id=iid: (toggle_needed(item_id), ui.open('/'))
+                      ).props('flat color=white')
+
+            ui.select(
+                cat_names,
+                value=cat or (cat_names[0] if cat_names else None),
+                on_change=lambda e, item_id=iid: (update_item_category(item_id, cat_dict[e.value]), ui.open('/'))
+            ).classes('w-32')
+
+            ui.button('🗑️',
+                      on_click=lambda item_id=iid: (delete_item(item_id), ui.open('/'))
+                      ).props('flat color=red')
+
+# ---------- BESOINS ----------
+def needs_panel():
+    global tri_mode_needs
+
+    ui.label('Besoins').classes('text-lg font-bold')
+
+    def set_tri_needs(mode):
+        global tri_mode_needs
+        tri_mode_needs = mode
+        ui.open('/')
+
+    ui.select(
+        ['Alphabétique', 'Ordre d’ajout'],
+        value=tri_mode_needs,
+        label='Trier par',
+        on_change=lambda e: set_tri_needs(e.value)
+    )
+
+    needed_items = get_items(current_user_id, only_needed=True)
+
+    grouped = {}
+    for iid, name, cat, needed in needed_items:
+        grouped.setdefault(cat or 'Sans catégorie', []).append((iid, name))
+
+    if not grouped:
+        ui.label("Aucun item marqué comme besoin.")
+        return
+
+    for cat, items in grouped.items():
+        ui.label(f'📂 {cat}').classes('text-lg font-bold mt-3')
+
+        if tri_mode_needs == 'Alphabétique':
+            items = sorted(items, key=lambda x: x[1])
+
+        for iid, name in items:
+            with ui.row().classes('items-center gap-3 mt-1'):
+                ui.button('❌',
+                          on_click=lambda item_id=iid: (toggle_needed(item_id), ui.open('/'))
+                          ).props('flat color=red')
+                ui.label(name).classes('font-bold')
+
+# ---------- NAVIGATION BAS ----------
 def bottom_nav():
     global current_tab
 
@@ -216,165 +348,26 @@ def bottom_nav():
         ui.button('❤️ Besoins', on_click=lambda: set_tab('besoins')).props('flat color=white')
         ui.button('📂 Catégories', on_click=lambda: set_tab('categories')).props('flat color=white')
 
-# ---------- UI ITEMS ----------
-def change_cat(item_id, new_cat_name, cat_dict):
-    if new_cat_name in cat_dict:
-        update_item_category(item_id, cat_dict[new_cat_name])
-        ui.open('/')
-
-def items_tab():
-    global tri_mode_items
-
-    ui.label('Gestion de liste d’items').classes('text-xl font-bold')
-
-    categories = get_categories()
-    cat_dict = {name: cid for cid, name in categories}
-    cat_names = list(cat_dict.keys()) if cat_dict else []
-
-    with ui.card().classes('w-full max-w-md'):
-        ui.label('Ajouter un item').classes('text-lg font-bold')
-
-        item_name_input = ui.input('Nom de l’item').classes('w-full')
-        item_cat_select = ui.select(cat_names, label='Catégorie').classes('w-full')
-        item_needed_checkbox = ui.checkbox('J’en ai besoin')
-
-        def add_item_action():
-            name = item_name_input.value.strip()
-            cat_name = item_cat_select.value
-            needed = 1 if item_needed_checkbox.value else 0
-            if name and cat_name:
-                add_item(name, cat_dict[cat_name], needed, current_user_id)
-                ui.open('/')
-
-        ui.button('Ajouter item', on_click=add_item_action).classes('mt-2 w-full')
-
-    ui.separator()
-    ui.label('Tous les items').classes('text-lg font-bold')
-
-    def set_tri_items(mode):
-        global tri_mode_items
-        tri_mode_items = mode
-        ui.open('/')
-
-    ui.select(
-        ['Alphabétique', 'Ordre d’ajout', 'Catégorie', 'Besoin'],
-        value=tri_mode_items,
-        label='Trier les items par',
-        on_change=lambda e: set_tri_items(e.value)
-    ).classes('w-full max-w-md')
-
-    all_items = get_items(current_user_id, only_needed=False)
-
-    if tri_mode_items == 'Alphabétique':
-        all_items = sorted(all_items, key=lambda x: x[1].lower())
-    elif tri_mode_items == 'Catégorie':
-        all_items = sorted(all_items, key=lambda x: (x[2] or '').lower())
-    elif tri_mode_items == 'Besoin':
-        all_items = sorted(all_items, key=lambda x: x[3], reverse=True)
-
-    for iid, name, cat, needed in all_items:
-        with ui.row().classes('items-center w-full max-w-md justify-between bg-[#1e1e1e] rounded-lg px-3 py-2 mt-2'):
-            ui.label(name).classes('text-base font-bold')
-
-            def toggle(item_id=iid):
-                toggle_needed(item_id)
-                ui.open('/')
-
-            ui.button('✔️' if needed else '❌', on_click=toggle).props('flat color=white')
-
-            cat_select = ui.select(
-                cat_names,
-                value=cat or (cat_names[0] if cat_names else None),
-                on_change=lambda e, item_id=iid: change_cat(item_id, e.value, cat_dict)
-            ).classes('w-32')
-
-            def delete(item_id=iid):
-                delete_item(item_id)
-                ui.open('/')
-
-            ui.button('🗑️', on_click=delete).props('flat color=red')
-
-# ---------- UI CATEGORIES ----------
-def delete_cat_action(cat_id):
-    delete_category(cat_id)
-    ui.open('/')
-
-def categories_tab():
-    ui.label('Gestion des catégories').classes('text-xl font-bold')
-
-    new_cat_input = ui.input('Nouvelle catégorie').classes('w-full max-w-md')
-
-    def add_cat_action():
-        name = new_cat_input.value.strip()
-        if name:
-            add_category(name)
-            ui.open('/')
-
-    ui.button('Ajouter', on_click=add_cat_action).classes('mt-2 w-full max-w-md')
-
-    ui.separator()
-    ui.label('Catégories existantes').classes('text-lg font-bold')
-
-    categories = get_categories()
-    for cid, name in categories:
-        with ui.row().classes('items-center w-full max-w-md justify-between mt-1'):
-            ui.label(name)
-            ui.button('🗑️', on_click=lambda cat_id=cid: delete_cat_action(cat_id)).props('flat color=red')
-
-# ---------- UI BESOINS ----------
-def besoins_tab():
-    global tri_mode_needs
-
-    ui.label('Besoins par catégorie').classes('text-xl font-bold')
-
-    def set_tri_needs(mode):
-        global tri_mode_needs
-        tri_mode_needs = mode
-        ui.open('/')
-
-    ui.select(
-        ['Alphabétique', 'Ordre d’ajout'],
-        value=tri_mode_needs,
-        label='Mode de tri',
-        on_change=lambda e: set_tri_needs(e.value)
-    ).classes('w-full max-w-md')
-
-    needed_items = get_items(current_user_id, only_needed=True)
-
-    grouped = {}
-    for iid, name, cat, needed in needed_items:
-        grouped.setdefault(cat or 'Sans catégorie', []).append((iid, name))
-
-    if not grouped:
-        ui.label("Aucun item marqué comme 'Besoin'.").classes('mt-2')
-    else:
-        for cat, items in grouped.items():
-            ui.label(f'📂 {cat}').classes('text-lg font-bold mt-3')
-
-            if tri_mode_needs == 'Alphabétique':
-                items = sorted(items, key=lambda x: x[1])
-
-            for iid, name in items:
-                with ui.row().classes('items-center w-full max-w-md justify-start gap-3 mt-1'):
-                    def toggle_need(item_id=iid):
-                        toggle_needed(item_id)
-                        ui.open('/')
-
-                    ui.button('❌', on_click=toggle_need).props('flat color=red')
-                    ui.label(name).classes('text-base font-bold')
-
 # ---------- PAGE PRINCIPALE ----------
 @ui.page('/')
 def main_page():
-    with ui.row().classes('w-full justify-center mt-2'):
-        user_panel()
-    ui.separator()
-    if current_tab == 'items':
-        items_tab()
-    elif current_tab == 'besoins':
-        besoins_tab()
-    elif current_tab == 'categories':
-        categories_tab()
+
+    with ui.row().classes('w-full justify-center mt-4'):
+        with ui.column().classes('w-full max-w-sm bg-[#222] p-4 rounded-lg'):
+            user_panel()
+            ui.separator()
+            categories_panel()
+
+        with ui.column().classes('w-full max-w-sm bg-[#222] p-4 rounded-lg ml-4'):
+            add_item_panel()
+            ui.separator()
+            if current_tab == 'items':
+                items_panel()
+            elif current_tab == 'besoins':
+                needs_panel()
+            elif current_tab == 'categories':
+                categories_panel()
+
     bottom_nav()
 
 # ---------- LANCEMENT ----------
