@@ -1,13 +1,17 @@
 import sqlite3
+import os
 from nicegui import ui
 
-DB_PATH = 'items.db'
+# ---------- BASE DE DONNÉES (persistante dans GitHub) ----------
+DB_PATH = '/opt/render/project/src/items.db'
 
-# ---------- BASE DE DONNÉES ----------
 def get_conn():
     return sqlite3.connect(DB_PATH)
 
 def init_db():
+    if os.path.exists(DB_PATH):
+        return
+
     conn = get_conn()
     cur = conn.cursor()
 
@@ -37,12 +41,6 @@ def init_db():
         )
     ''')
 
-    cur.execute("PRAGMA table_info(items)")
-    cols = [c[1] for c in cur.fetchall()]
-    if 'user_id' not in cols:
-        cur.execute("ALTER TABLE items ADD COLUMN user_id INTEGER;")
-        cur.execute("UPDATE items SET user_id = 1;")
-
     conn.commit()
     conn.close()
 
@@ -51,12 +49,8 @@ init_db()
 # ---------- ÉTAT GLOBAL ----------
 current_user_id = 1
 current_tab = 'items'
-tri_mode_items = 'Alphabétique'
-tri_mode_needs = 'Alphabétique'
-
-# Nouveaux états pour expansions
-exp_user_open = False
-exp_cat_open = False
+tri_mode_items = 'Ordre d’ajout'
+tri_mode_needs = 'Ordre d’ajout'
 
 # ---------- DB HELPERS ----------
 def get_users():
@@ -78,6 +72,14 @@ def rename_user(user_id, new_name):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("UPDATE users SET name = ? WHERE id = ?", (new_name, user_id))
+    conn.commit()
+    conn.close()
+
+def delete_user(user_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM items WHERE user_id = ?", (user_id,))
+    cur.execute("DELETE FROM users WHERE id = ?", (user_id,))
     conn.commit()
     conn.close()
 
@@ -162,92 +164,88 @@ def update_item_category(item_id, category_id):
     conn.commit()
     conn.close()
 
-# ---------- PANNEAU UTILISATEUR ----------
-def user_panel():
-    global current_user_id, exp_user_open
+# ---------- ONGLET : UTILISATEURS ----------
+def users_panel():
+    ui.label('Gestion des utilisateurs').classes('text-xl font-bold')
 
-    with ui.expansion('Utilisateur', icon='person', value=exp_user_open).classes('bg-white text-black'):
-        users = get_users()
-        if not users:
-            add_user('Utilisateur 1')
-            users = get_users()
+    users = get_users()
+    user_names = {u[1]: u[0] for u in users}
 
-        user_names = {u[1]: u[0] for u in users}
-        names_list = list(user_names.keys())
-
-        def on_user_change(e):
-            global current_user_id, exp_user_open
-            current_user_id = user_names[e.value]
-            exp_user_open = False
+    # Sélection utilisateur actif
+    ui.label('Utilisateur actif').classes('mt-3')
+    ui.select(
+        list(user_names.keys()),
+        value=[name for name, uid in user_names.items() if uid == current_user_id][0],
+        on_change=lambda e: (
+            globals().__setitem__('current_user_id', user_names[e.value]),
             ui.open('/')
-
-        ui.select(
-            names_list,
-            value=names_list[0],
-            label='Choisir un utilisateur',
-            on_change=on_user_change
         )
+    ).classes('w-full')
 
-        new_name_input = ui.input('Nouveau nom')
-        ui.button('Renommer', on_click=lambda: (
-            rename_user(current_user_id, new_name_input.value),
-            globals().__setitem__('exp_user_open', False),
-            ui.open('/')
-        ))
+    ui.separator()
 
-        new_user_input = ui.input('Nouvel utilisateur')
-        ui.button('Créer utilisateur', on_click=lambda: (
-            add_user(new_user_input.value),
-            globals().__setitem__('exp_user_open', False),
-            ui.open('/')
-        ))
+    # Renommer
+    new_name = ui.input('Nouveau nom').classes('w-full')
+    ui.button('Renommer', on_click=lambda: (
+        rename_user(current_user_id, new_name.value),
+        ui.open('/')
+    )).classes('w-full mt-2')
 
-# ---------- PANNEAU CATÉGORIES ----------
+    ui.separator()
+
+    # Ajouter
+    new_user = ui.input('Nouvel utilisateur').classes('w-full')
+    ui.button('Créer utilisateur', on_click=lambda: (
+        add_user(new_user.value),
+        ui.open('/')
+    )).classes('w-full mt-2')
+
+# ---------- ONGLET : CATÉGORIES ----------
 def categories_panel():
-    global exp_cat_open
+    ui.label('Gestion des catégories').classes('text-xl font-bold')
 
-    with ui.expansion('Catégories', icon='folder', value=exp_cat_open).classes('bg-white text-black'):
-        new_cat_input = ui.input('Nouvelle catégorie')
-        ui.button('Ajouter', on_click=lambda: (
-            add_category(new_cat_input.value),
-            globals().__setitem__('exp_cat_open', False),
-            ui.open('/')
-        ))
+    new_cat_input = ui.input('Nouvelle catégorie').classes('w-full')
+    ui.button('Ajouter', on_click=lambda: (
+        add_category(new_cat_input.value),
+        ui.open('/')
+    )).classes('w-full mt-2')
 
-        ui.separator()
+    ui.separator()
 
-        categories = get_categories()
-        for cid, name in categories:
-            with ui.row().classes('items-center justify-between mt-1'):
-                ui.label(name)
-                ui.button('🗑️', on_click=lambda cat_id=cid: (
-                    delete_category(cat_id),
-                    globals().__setitem__('exp_cat_open', False),
-                    ui.open('/')
-                )).props('flat color=red')
+    categories = get_categories()
+    for cid, name in categories:
+        with ui.row().classes('items-center justify-between mt-1'):
+            ui.label(name)
+            ui.button('🗑️', on_click=lambda cat_id=cid: (
+                delete_category(cat_id),
+                ui.open('/')
+            )).props('flat color=red')
 
-# ---------- PANNEAU AJOUT ITEM ----------
+# ---------- AJOUT ITEM ----------
 def add_item_panel():
-    ui.label('Ajouter un item').classes('text-lg font-bold')
+    ui.label('Ajouter un item').classes('text-xl font-bold')
 
     categories = get_categories()
     cat_dict = {name: cid for cid, name in categories}
     cat_names = list(cat_dict.keys())
 
-    item_name_input = ui.input('Nom de l’item')
-    item_cat_select = ui.select(cat_names, label='Catégorie')
+    # Catégorie par défaut = Épicerie
+    default_cat = 'Épicerie' if 'Épicerie' in cat_names else (cat_names[0] if cat_names else None)
+
+    item_name_input = ui.input('Nom de l’item').classes('w-full')
+    item_cat_select = ui.select(cat_names, value=default_cat, label='Catégorie').classes('w-full')
     item_needed_checkbox = ui.checkbox('J’en ai besoin')
 
     ui.button('Ajouter item', on_click=lambda: (
         add_item(item_name_input.value, cat_dict[item_cat_select.value], 1 if item_needed_checkbox.value else 0, current_user_id),
         ui.open('/')
-    ))
+    )).classes('w-full mt-2')
 
-# ---------- LISTE DES ITEMS ----------
+# ---------- ITEMS ----------
 def items_panel():
     global tri_mode_items
 
-    ui.label('Tous les items').classes('text-lg font-bold')
+    ui.label('Tous les items').classes('text-xl font-bold')
 
     ui.select(
         ['Alphabétique', 'Ordre d’ajout', 'Catégorie', 'Besoin'],
@@ -257,7 +255,7 @@ def items_panel():
             globals().__setitem__('tri_mode_items', e.value),
             ui.open('/')
         )
-    )
+    ).classes('w-full')
 
     categories = get_categories()
     cat_dict = {name: cid for cid, name in categories}
@@ -289,7 +287,7 @@ def items_panel():
                     update_item_category(item_id, cat_dict[e.value]),
                     ui.open('/')
                 )
-            ).classes('w-32')
+            ).classes('w-full')
 
             ui.button('🗑️',
                       on_click=lambda item_id=iid: (
@@ -301,7 +299,7 @@ def items_panel():
 def needs_panel():
     global tri_mode_needs
 
-    ui.label('Besoins').classes('text-lg font-bold')
+    ui.label('Besoins').classes('text-xl font-bold')
 
     ui.select(
         ['Alphabétique', 'Ordre d’ajout'],
@@ -311,7 +309,7 @@ def needs_panel():
             globals().__setitem__('tri_mode_needs', e.value),
             ui.open('/')
         )
-    )
+    ).classes('w-full')
 
     needed_items = get_items(current_user_id, only_needed=True)
 
@@ -358,26 +356,27 @@ def bottom_nav():
             ui.open('/')
         )).props('flat color=white')
 
+        ui.button('👤 Utilisateurs', on_click=lambda: (
+            globals().__setitem__('current_tab', 'users'),
+            ui.open('/')
+        )).props('flat color=white')
+
 # ---------- PAGE PRINCIPALE ----------
 @ui.page('/')
 def main_page():
 
     with ui.row().classes('w-full justify-center mt-4'):
-        # Colonne gauche
-        with ui.column().classes('w-full max-w-sm bg-white text-black p-4 rounded-lg shadow-md'):
-            user_panel()
-            categories_panel()
-
-        # Colonne droite
-        with ui.column().classes('w-full max-w-sm bg-white text-black p-4 rounded-lg shadow-md ml-4'):
-            add_item_panel()
-            ui.separator()
+        with ui.column().classes('w-full max-w-md bg-white text-black p-4 rounded-lg shadow-md'):
             if current_tab == 'items':
+                add_item_panel()
+                ui.separator()
                 items_panel()
             elif current_tab == 'besoins':
                 needs_panel()
             elif current_tab == 'categories':
                 categories_panel()
+            elif current_tab == 'users':
+                users_panel()
 
     bottom_nav()
 
