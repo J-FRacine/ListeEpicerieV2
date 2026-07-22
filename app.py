@@ -49,8 +49,8 @@ init_db()
 # ---------- ÉTAT GLOBAL ----------
 current_user_id = 1
 current_tab = 'items'
-tri_mode_items = 'Alphabétique'
-tri_mode_needs = 'Alphabétique'
+tri_mode_items = 'Ordre d’ajout'
+tri_mode_needs = 'Ordre d’ajout'
 
 # ---------- DB HELPERS ----------
 def get_users():
@@ -171,7 +171,6 @@ def users_panel():
     users = get_users()
     user_names = {u[1]: u[0] for u in users}
 
-    # Sélection utilisateur actif
     ui.label('Utilisateur actif').classes('mt-3')
     ui.select(
         list(user_names.keys()),
@@ -184,7 +183,6 @@ def users_panel():
 
     ui.separator()
 
-    # Renommer
     new_name = ui.input('Nouveau nom').classes('w-full')
     ui.button('Renommer', on_click=lambda: (
         rename_user(current_user_id, new_name.value),
@@ -193,7 +191,6 @@ def users_panel():
 
     ui.separator()
 
-    # Ajouter
     new_user = ui.input('Nouvel utilisateur').classes('w-full')
     ui.button('Créer utilisateur', on_click=lambda: (
         add_user(new_user.value),
@@ -229,7 +226,6 @@ def add_item_panel():
     cat_dict = {name: cid for cid, name in categories}
     cat_names = list(cat_dict.keys())
 
-    # Catégorie par défaut = Épicerie
     default_cat = 'Épicerie' if 'Épicerie' in cat_names else (cat_names[0] if cat_names else None)
 
     item_name_input = ui.input('Nom de l’item').classes('w-full')
@@ -244,6 +240,22 @@ def add_item_panel():
 # ---------- ITEMS ----------
 def items_panel():
     global tri_mode_items
+
+    # Sélecteur utilisateur en haut
+    users = get_users()
+    user_names = {u[1]: u[0] for u in users}
+
+    ui.select(
+        list(user_names.keys()),
+        value=[name for name, uid in user_names.items() if uid == current_user_id][0],
+        label='Utilisateur',
+        on_change=lambda e: (
+            globals().__setitem__('current_user_id', user_names[e.value]),
+            ui.open('/')
+        )
+    ).classes('w-full')
+
+    ui.separator()
 
     ui.label('Tous les items').classes('text-xl font-bold')
 
@@ -271,33 +283,53 @@ def items_panel():
         all_items = sorted(all_items, key=lambda x: x[3], reverse=True)
 
     for iid, name, cat, needed in all_items:
-        with ui.row().classes('items-center justify-between bg-gray-100 rounded-lg px-3 py-2 mt-2'):
-            ui.label(name).classes('font-bold')
+        with ui.row().classes('items-center justify-between bg-gray-100 rounded-lg px-3 py-2 mt-2 gap-2'):
 
-            ui.button('✔️' if needed else '❌',
-                      on_click=lambda item_id=iid: (
-                          toggle_needed(item_id),
-                          ui.open('/')
-                      )).props('flat color=white')
+            # Nom + besoin
+            with ui.row().classes('items-center gap-2'):
+                ui.label(name).classes('font-bold')
+                ui.button('✔️' if needed else '❌',
+                          on_click=lambda item_id=iid: (
+                              toggle_needed(item_id),
+                              ui.open('/')
+                          )).props('flat color=white')
 
-            ui.select(
-                cat_names,
-                value=cat or (cat_names[0] if cat_names else None),
-                on_change=lambda e, item_id=iid: (
-                    update_item_category(item_id, cat_dict[e.value]),
-                    ui.open('/')
-                )
-            ).classes('w-full')
+            # Catégorie + poubelle sur la même ligne
+            with ui.row().classes('items-center gap-2'):
+                ui.select(
+                    cat_names,
+                    value=cat or (cat_names[0] if cat_names else None),
+                    on_change=lambda e, item_id=iid: (
+                        update_item_category(item_id, cat_dict[e.value]),
+                        ui.open('/')
+                    )
+                ).classes('w-32')
 
-            ui.button('🗑️',
-                      on_click=lambda item_id=iid: (
-                          delete_item(item_id),
-                          ui.open('/')
-                      )).props('flat color=red')
+                ui.button('🗑️',
+                          on_click=lambda item_id=iid: (
+                              delete_item(item_id),
+                              ui.open('/')
+                          )).props('flat color=red')
 
 # ---------- BESOINS ----------
 def needs_panel():
     global tri_mode_needs
+
+    # Sélecteur utilisateur en haut
+    users = get_users()
+    user_names = {u[1]: u[0] for u in users}
+
+    ui.select(
+        list(user_names.keys()),
+        value=[name for name, uid in user_names.items() if uid == current_user_id][0],
+        label='Utilisateur',
+        on_change=lambda e: (
+            globals().__setitem__('current_user_id', user_names[e.value]),
+            ui.open('/')
+        )
+    ).classes('w-full')
+
+    ui.separator()
 
     ui.label('Besoins').classes('text-xl font-bold')
 
