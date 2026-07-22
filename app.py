@@ -171,6 +171,7 @@ def users_panel():
     users = get_users()
     user_names = {u[1]: u[0] for u in users}
 
+    # --- Sélection utilisateur actif ---
     ui.label('Utilisateur actif').classes('mt-3')
     ui.select(
         list(user_names.keys()),
@@ -183,6 +184,7 @@ def users_panel():
 
     ui.separator()
 
+    # --- Renommer ---
     new_name = ui.input('Nouveau nom').classes('w-full')
     ui.button('Renommer', on_click=lambda: (
         rename_user(current_user_id, new_name.value),
@@ -191,11 +193,33 @@ def users_panel():
 
     ui.separator()
 
+    # --- Ajouter ---
     new_user = ui.input('Nouvel utilisateur').classes('w-full')
     ui.button('Créer utilisateur', on_click=lambda: (
         add_user(new_user.value),
         ui.open('/')
     )).classes('w-full mt-2')
+
+    ui.separator()
+
+    # --- Liste des utilisateurs ---
+    ui.label('Liste des utilisateurs').classes('text-lg font-bold mt-4')
+
+    for uid, name in users:
+        with ui.row().classes('items-center justify-between bg-gray-100 rounded-lg px-3 py-2 mt-2'):
+
+            ui.label(name).classes('font-bold')
+
+            with ui.row().classes('items-center gap-2'):
+                ui.button('Sélectionner', on_click=lambda u=uid: (
+                    globals().__setitem__('current_user_id', u),
+                    ui.open('/')
+                )).props('flat color=blue')
+
+                ui.button('🗑️', on_click=lambda u=uid: (
+                    delete_user(u),
+                    ui.open('/')
+                )).props('flat color=red')
 
 # ---------- ONGLET : CATÉGORIES ----------
 def categories_panel():
