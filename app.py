@@ -1,5 +1,7 @@
 import sqlite3
 import os
+import csv
+from datetime import datetime
 from nicegui import ui
 
 # ---------- BASE DE DONNÉES (persistante dans GitHub) ----------
@@ -164,6 +166,43 @@ def update_item_category(item_id, category_id):
     conn.commit()
     conn.close()
 
+# ---------- ADMIN : EXPORT CSV ----------
+def export_csv():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT items.id, items.name, categories.name, items.needed, users.name
+        FROM items
+        LEFT JOIN categories ON items.category_id = categories.id
+        LEFT JOIN users ON items.user_id = users.id
+        ORDER BY items.id
+    """)
+    rows = cur.fetchall()
+    conn.close()
+
+    filename = f"items_export_{datetime.now().strftime('%Y-%m-%d_%Hh%M')}.csv"
+
+    with open(filename, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(['ID', 'Nom', 'Catégorie', 'Besoin', 'Utilisateur'])
+        writer.writerows(rows)
+
+    ui.download(filename)
+
+# ---------- ADMIN : BACKUP BD ----------
+def backup_db():
+    timestamp = datetime.now().strftime('%Y-%m-%d_%Hh%M')
+    backup_name = f"/opt/render/project/src/items_backup_{timestamp}.db"
+    os.system(f"cp {DB_PATH} {backup_name}")
+    ui.notify(f"Sauvegarde créée : {backup_name}")
+
+# ---------- ONGLET : ADMIN ----------
+def admin_panel():
+    ui.label('Administration').classes('text-xl font-bold')
+
+    ui.button('Exporter en CSV', on_click=export_csv).classes('w-full mt-3')
+    ui.button('Créer une sauvegarde BD (timestamp)', on_click=backup_db).classes('w-full mt-3')
+
 # ---------- ONGLET : UTILISATEURS ----------
 def users_panel():
     ui.label('Gestion des utilisateurs').classes('text-xl font-bold')
@@ -171,7 +210,6 @@ def users_panel():
     users = get_users()
     user_names = {u[1]: u[0] for u in users}
 
-    # --- Sélection utilisateur actif ---
     ui.label('Utilisateur actif').classes('mt-3')
     ui.select(
         list(user_names.keys()),
@@ -184,7 +222,6 @@ def users_panel():
 
     ui.separator()
 
-    # --- Renommer ---
     new_name = ui.input('Nouveau nom').classes('w-full')
     ui.button('Renommer', on_click=lambda: (
         rename_user(current_user_id, new_name.value),
@@ -193,7 +230,6 @@ def users_panel():
 
     ui.separator()
 
-    # --- Ajouter ---
     new_user = ui.input('Nouvel utilisateur').classes('w-full')
     ui.button('Créer utilisateur', on_click=lambda: (
         add_user(new_user.value),
@@ -202,7 +238,6 @@ def users_panel():
 
     ui.separator()
 
-    # --- Liste des utilisateurs ---
     ui.label('Liste des utilisateurs').classes('text-lg font-bold mt-4')
 
     for uid, name in users:
@@ -265,7 +300,6 @@ def add_item_panel():
 def items_panel():
     global tri_mode_items
 
-    # Sélecteur utilisateur en haut
     users = get_users()
     user_names = {u[1]: u[0] for u in users}
 
@@ -309,7 +343,6 @@ def items_panel():
     for iid, name, cat, needed in all_items:
         with ui.row().classes('items-center justify-between bg-gray-100 rounded-lg px-3 py-2 mt-2 gap-2'):
 
-            # Nom + besoin
             with ui.row().classes('items-center gap-2'):
                 ui.label(name).classes('font-bold')
                 ui.button('✔️' if needed else '❌',
@@ -318,7 +351,6 @@ def items_panel():
                               ui.open('/')
                           )).props('flat color=white')
 
-            # Catégorie + poubelle sur la même ligne
             with ui.row().classes('items-center gap-2'):
                 ui.select(
                     cat_names,
@@ -339,7 +371,6 @@ def items_panel():
 def needs_panel():
     global tri_mode_needs
 
-    # Sélecteur utilisateur en haut
     users = get_users()
     user_names = {u[1]: u[0] for u in users}
 
@@ -396,7 +427,7 @@ def needs_panel():
 def bottom_nav():
     global current_tab
 
-    with ui.row().classes('fixed bottom-0 left-0 w-full justify-around bg-gray-800 text-white py-2 border-t border-gray-700'):
+    with ui.row().classes('fixed bottom-0 left-0 w-full justify-around bg-gray-800/90 text-white py-2 border-t border-gray-700 backdrop-blur'):
         ui.button('📝 Items', on_click=lambda: (
             globals().__setitem__('current_tab', 'items'),
             ui.open('/')
@@ -417,12 +448,20 @@ def bottom_nav():
             ui.open('/')
         )).props('flat color=white')
 
+        ui.button('⚙️ Admin', on_click=lambda: (
+            globals().__setitem__('current_tab', 'admin'),
+            ui.open('/')
+        )).props('flat color=white')
+
 # ---------- PAGE PRINCIPALE ----------
 @ui.page('/')
 def main_page():
 
     with ui.row().classes('w-full justify-center mt-4'):
-        with ui.column().classes('w-full max-w-md bg-white text-black p-4 rounded-lg shadow-md'):
+        with ui.column().classes(
+            'w-full max-w-md bg-white text-black p-4 rounded-lg shadow-md '
+            'h-[calc(100vh-80px)] overflow-y-auto pb-24'
+        ):
             if current_tab == 'items':
                 add_item_panel()
                 ui.separator()
@@ -433,6 +472,8 @@ def main_page():
                 categories_panel()
             elif current_tab == 'users':
                 users_panel()
+            elif current_tab == 'admin':
+                admin_panel()
 
     bottom_nav()
 
